@@ -3,6 +3,8 @@ from meeko import PDBQTMolecule
 from meeko import MoleculePreparation
 from meeko import PDBQTWriterLegacy
 from rdkit import Chem
+
+import json
 import pathlib
 
 workdir = pathlib.Path(__file__)
@@ -20,7 +22,7 @@ def check_rdkit_bond_lengths(fpath, nr_expected_none, is_dlg, skip_typing):
     return run_from_pdbqtmol(pdbqtmol, nr_expected_none)
 
 def run_from_pdbqtmol(pdbqtmol, nr_expected_none=0):
-    mols = RDKitMolCreate.from_pdbqt_mol(pdbqtmol) 
+    mols = RDKitMolCreate.from_pdbqt_mol(pdbqtmol)
     assert(mols.count(None) == nr_expected_none)
     nr_conformers = set()
     for mol in mols:
@@ -37,7 +39,7 @@ def run_from_pdbqtmol(pdbqtmol, nr_expected_none=0):
                 has_S = bond.GetBeginAtom().GetAtomicNum() in [16, 17, 35]
                 has_S = has_S or (bond.GetEndAtom().GetAtomicNum() in [16, 17, 35])
                 if has_S:
-                    bond_range = [value + bond_S_bonus for value in bond_range] 
+                    bond_range = [value + bond_S_bonus for value in bond_range]
                 a = positions[bond.GetBeginAtomIdx(), :]
                 b = positions[bond.GetEndAtomIdx(), :]
                 dist = sum([(a[i]-b[i])**2 for i in range(3)])**0.5
@@ -59,6 +61,52 @@ def test_phe_badphe():
 def test_arg_his():
     fpath = datadir / "arg_his.pdbqt"
     check_rdkit_bond_lengths(fpath, nr_expected_none=0, is_dlg=False, skip_typing=True)
+
+def test_sdf_attribute_no_clusters():
+    fpath     = datadir / "staurosporine.pdbqt"
+    pdbqt_mol = PDBQTMolecule.from_file(fpath, is_dlg=False, skip_typing=True)
+
+    supplier = Chem.SDMolSupplier()
+    sdf_data, failures = RDKitMolCreate.write_sd_string(pdbqt_mol, only_cluster_leads=False)
+    supplier.SetData(sdf_data)
+
+    rdkit_mols = [mol for mol in supplier if mol]
+    assert len(rdkit_mols) == 3
+
+    for mol in rdkit_mols:
+        props = mol.GetPropsAsDict()
+        assert "meeko" in props
+
+        data = json.loads(props["meeko"])
+        assert "free_energy"           in data
+        assert "intermolecular_energy" in data
+        assert "internal_energy"       in data
+        assert "cluster_size"      not in data
+        assert "cluster_id"        not in data
+        assert "rank_in_cluster"   not in data
+
+def test_sdf_attribute_with_clusters():
+    fpath     = datadir / "staurosporine.dlg"
+    pdbqt_mol = PDBQTMolecule.from_file(fpath, is_dlg=True, skip_typing=True)
+
+    supplier = Chem.SDMolSupplier()
+    sdf_data, failures = RDKitMolCreate.write_sd_string(pdbqt_mol, only_cluster_leads=False)
+    supplier.SetData(sdf_data)
+
+    rdkit_mols = [mol for mol in supplier if mol]
+    assert len(rdkit_mols) == 3
+
+    for mol in rdkit_mols:
+        props = mol.GetPropsAsDict()
+        assert "meeko" in props
+
+        data = json.loads(props["meeko"])
+        assert "free_energy"           in data
+        assert "intermolecular_energy" in data
+        assert "internal_energy"       in data
+        assert "cluster_size"          in data
+        assert "cluster_id"            in data
+        assert "rank_in_cluster"       in data
 
 
 # The following tests  generate the PDBQT and convert it back to RDKit,

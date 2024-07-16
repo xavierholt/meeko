@@ -378,18 +378,17 @@ class RDKitMolCreate:
         else:
             nr_poses = pdbqt_mol._pose_data["n_poses"]
             pose_idxs = list(range(nr_poses))
-        for prop_sdf, prop_pdbqt in property_names.items():
-            if nr_conformers == nr_poses:
-                props[prop_sdf] = prop_pdbqt
-        has_all_data = True
-        for _, key in props.items():
-            has_all_data &= len(pdbqt_mol._pose_data[key]) == nr_conformers
+
+        if nr_conformers == nr_poses:
+            for prop_sdf, prop_pdbqt in property_names.items():
+                if len(pdbqt_mol._pose_data[prop_pdbqt]) == nr_conformers:
+                    props[prop_sdf] = pdbqt_mol._pose_data[prop_pdbqt]
+
         for conformer in combined_mol.GetConformers():
             i = conformer.GetId()
             j = pose_idxs[i]
-            if has_all_data:
-                data = {k: pdbqt_mol._pose_data[v][j] for k, v in props.items()}
-                if len(data): combined_mol.SetProp("meeko", json.dumps(data))
+            data = {k: v[j] for k, v in props.items()}
+            combined_mol.SetProp("meeko", json.dumps(data))
             f.write(combined_mol, i)
         f.close()
         output_string = sio.getvalue()
